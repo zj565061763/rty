@@ -11,16 +11,14 @@ class RtyTest {
   @Test
   fun `test success`() = runTest {
     val result = rty { "success" }
-    assertEquals("success", result)
+    assertEquals("success", result.getOrThrow())
   }
 
   @Test
   fun `test error`() = runTest {
-    val result = runCatching {
-      rty(maxCount = 99) { error("error $rtyCount") }
-    }
-    val exception = result.exceptionOrNull()
-    assertEquals("error 99", exception!!.message)
+    val result = rty(maxCount = 99) { error("error $rtyCount") }
+    val exception = result.exceptionOrNull()!!
+    assertEquals("error 99", exception.message)
   }
 
   @Test
@@ -37,11 +35,9 @@ class RtyTest {
   @Test
   fun `test count`() = runTest {
     val events = mutableListOf<String>()
-    runCatching {
-      rty(maxCount = 5) {
-        events.add(rtyCount.toString())
-        error("error")
-      }
+    rty(maxCount = 5) {
+      events.add(rtyCount.toString())
+      error("error")
     }
     assertEquals("1|2|3|4|5", events.joinToString("|"))
   }
@@ -49,16 +45,14 @@ class RtyTest {
   @Test
   fun `test onFailure`() = runTest {
     val events = mutableListOf<String>()
-    runCatching {
-      rty(
-        maxCount = 3,
-        onFailure = {
-          assertEquals(true, it.message == "error $rtyCount")
-          events.add(it.message!!)
-        },
-      ) {
-        error("error $rtyCount")
-      }
+    rty(
+      maxCount = 3,
+      onFailure = {
+        assertEquals(true, it.message == "error $rtyCount")
+        events.add(it.message!!)
+      },
+    ) {
+      error("error $rtyCount")
     }
     assertEquals("error 1|error 2|error 3", events.joinToString("|"))
   }
@@ -66,17 +60,15 @@ class RtyTest {
   @Test
   fun `test onFailure false`() = runTest {
     val events = mutableListOf<String>()
-    runCatching {
-      rty(
-        maxCount = Int.MAX_VALUE,
-        onFailure = {
-          assertEquals(true, it.message == "error $rtyCount")
-          events.add(it.message!!)
-          rtyCount < 3
-        },
-      ) {
-        error("error $rtyCount")
-      }
+    rty(
+      maxCount = Int.MAX_VALUE,
+      onFailure = {
+        assertEquals(true, it.message == "error $rtyCount")
+        events.add(it.message!!)
+        rtyCount < 3
+      },
+    ) {
+      error("error $rtyCount")
     }
     assertEquals("error 1|error 2|error 3", events.joinToString("|"))
   }

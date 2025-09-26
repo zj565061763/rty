@@ -7,9 +7,9 @@ import kotlinx.coroutines.ensureActive
 
 /**
  * 执行[block]，[block]发生异常时会被捕获并通知[onFailure]，[CancellationException]异常除外。
- * 如果[onFailure]返回false则抛出异常；
+ * 如果[onFailure]返回false则返回失败结果；
  * 如果[onFailure]返回true则继续执行后面的逻辑，如果未达到最大执行次数[maxCount]，延迟[getDelay]之后继续执行[block]；
- * 如果达到最大执行次数[maxCount]，则抛出异常。
+ * 如果达到最大执行次数[maxCount]，则返回失败结果。
  */
 suspend fun <T> rty(
   /** 最大执行次数 */
@@ -20,7 +20,7 @@ suspend fun <T> rty(
   onFailure: RtyScope.(Throwable) -> Boolean = { true },
   /** 执行回调 */
   block: suspend RtyScope.() -> T,
-): T {
+): Result<T> {
   require(maxCount > 0)
   with(RtyScopeImpl()) {
     while (true) {
@@ -34,18 +34,18 @@ suspend fun <T> rty(
 
       currentCoroutineContext().ensureActive()
       if (result.isSuccess) {
-        return result.getOrThrow()
+        return result
       }
 
       val exception = checkNotNull(result.exceptionOrNull())
       val shouldContinue = onFailure(exception).also { currentCoroutineContext().ensureActive() }
       if (!shouldContinue) {
-        throw exception
+        return result
       }
 
       if (rtyCount >= maxCount) {
         // 达到最大执行次数
-        throw exception
+        return result
       } else {
         // 延迟后继续执行
         delay(getDelay())
