@@ -62,11 +62,6 @@ interface RtyScope {
 
 private class RtyScopeImpl : RtyScope {
   private var _count = 0
-
-  override val rtyCount: Int
-    get() = _count
-
-  fun increaseCount() {
-    _count++
-  }
+  override val rtyCount: Int get() = _count
+  fun increaseCount() = _count++
 }
