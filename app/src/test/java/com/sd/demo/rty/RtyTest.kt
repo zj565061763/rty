@@ -43,6 +43,21 @@ class RtyTest {
   }
 
   @Test
+  fun `test skip`() = runTest {
+    val events = mutableListOf<String>()
+    var skipped = false
+    rty(maxCount = 5) {
+      events.add(rtyCount.toString())
+      if (!skipped && rtyCount == 3) {
+        skipped = true
+        skip()
+      }
+      error("error")
+    }
+    assertEquals("1|2|3|3|4|5", events.joinToString("|"))
+  }
+
+  @Test
   fun `test onFailure`() = runTest {
     val events = mutableListOf<String>()
     rty(
