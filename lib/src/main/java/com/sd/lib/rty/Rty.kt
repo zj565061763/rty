@@ -59,14 +59,13 @@ interface RtyScope {
 
 interface RtyDoingScope : RtyScope {
   /** 跳过本次执行，本次不计数 */
-  fun skip(): Nothing
+  fun rtySkip(): Nothing
 }
 
 private class RtyScopeImpl : RtyDoingScope {
   private var _count = 1
-
   override val rtyCount: Int get() = _count
-  override fun skip(): Nothing = throw SkipRtyException()
+  override fun rtySkip(): Nothing = throw SkipRtyException()
   fun increaseCount() = _count++
 }
 

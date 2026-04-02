@@ -50,7 +50,7 @@ class RtyTest {
       events.add(rtyCount.toString())
       if (!skipped && rtyCount == 3) {
         skipped = true
-        skip()
+        rtySkip()
       }
       error("error")
     }
