@@ -5,9 +5,11 @@
 ### ⚠️ Breaking Changes
 
 - `rty` 的 `maxCount` 默认值由 `3` 改为 `Int.MAX_VALUE`
+- `rty` 的 `getDelay` 默认延迟由固定 `5` 秒改为阶梯延迟（依次 `3` 秒、`5` 秒，之后固定 `10` 秒）
 
 ### ✨ Improvements
 
+- 新增 `rtyDelayDefault()` 与 `rtyDelay(vararg delays: Long)` 用于构建 `getDelay` 延迟策略
 - 完善公开 API 的 KDoc 注释，补充参数说明、`maxCount` 约束与 `rtySkip()` 行为说明
 - 校验 `rtySkip()` 调用时机，禁止在当轮执行块外调用
 - 修正 Maven POM 中的开源协议为 MIT，与仓库 `LICENSE` 保持一致

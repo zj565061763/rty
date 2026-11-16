@@ -126,7 +126,7 @@ class RtyTest {
         "ok:$rtyCount"
       }
       assertEquals("ok:10", result.getOrThrow())
-      assertEquals(9 * 5_000L, currentTime)
+      assertEquals(3_000L + 5_000L + 7 * 10_000L, currentTime)
     }
   }
 
@@ -272,6 +272,53 @@ class RtyTest {
   }
 
   @Test
+  fun `test default delay`() {
+    runTest {
+      val times = mutableListOf<Long>()
+      rty(maxCount = 5) {
+        times.add(currentTime)
+        error("error")
+      }
+      assertEquals(listOf(0L, 3_000L, 8_000L, 18_000L, 28_000L), times)
+      assertEquals(28_000L, currentTime)
+
+      val explicitTimes = mutableListOf<Long>()
+      rty(
+        maxCount = 5,
+        getDelay = rtyDelayDefault(),
+      ) {
+        explicitTimes.add(currentTime)
+        error("error")
+      }
+      assertEquals(listOf(28_000L, 31_000L, 36_000L, 46_000L, 56_000L), explicitTimes)
+      assertEquals(56_000L, currentTime)
+    }
+  }
+
+  @Test
+  fun `test rtyDelay`() {
+    assertThrows(IllegalArgumentException::class.java) {
+      rtyDelay()
+    }
+    runTest {
+      val raw = longArrayOf(1_000L, 2_000L, 4_000L)
+      val getDelay = rtyDelay(*raw)
+      raw[0] = 99_000L
+
+      val times = mutableListOf<Long>()
+      rty(
+        maxCount = 5,
+        getDelay = getDelay,
+      ) {
+        times.add(currentTime)
+        error("error")
+      }
+      assertEquals(listOf(0L, 1_000L, 3_000L, 7_000L, 11_000L), times)
+      assertEquals(11_000L, currentTime)
+    }
+  }
+
+  @Test
   fun `test invalid maxCount`() {
     assertThrows(IllegalArgumentException::class.java) {
       runTest {
@@ -317,7 +364,7 @@ class RtyTest {
         error("error $rtyCount")
       }
       assertEquals("error 1|error 2|error 3", events.joinToString("|"))
-      assertEquals(2 * 5_000L, currentTime)
+      assertEquals(3_000L + 5_000L, currentTime)
     }
   }
 }

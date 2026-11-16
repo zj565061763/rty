@@ -18,7 +18,7 @@ import kotlinx.coroutines.ensureActive
  */
 suspend fun <T> rty(
   maxCount: Int = Int.MAX_VALUE,
-  getDelay: RtyScope.() -> Long = { 5_000 },
+  getDelay: RtyScope.() -> Long = rtyDelayDefault(),
   onFailure: RtyScope.(Throwable) -> Boolean = { true },
   block: suspend RtyDoingScope.() -> T,
 ): Result<T> {
@@ -52,6 +52,31 @@ suspend fun <T> rty(
         continue
       }
     }
+  }
+}
+
+/** 返回默认的延迟策略，依次延迟 3 秒、5 秒，之后固定 10 秒 */
+fun rtyDelayDefault(): RtyScope.() -> Long {
+  return {
+    when (rtyCount) {
+      1 -> 3_000L
+      2 -> 5_000L
+      else -> 10_000L
+    }
+  }
+}
+
+/**
+ * 按 [RtyScope.rtyCount] 依次取 [delays] 中的延迟毫秒数，超出长度后固定使用最后一项
+ *
+ * @param delays 各次延迟毫秒数，不能为空
+ */
+fun rtyDelay(vararg delays: Long): RtyScope.() -> Long {
+  require(delays.isNotEmpty())
+  val copy = delays.copyOf()
+  return {
+    val index = if (rtyCount <= 1) 0 else minOf(rtyCount - 1, copy.lastIndex)
+    copy[index]
   }
 }
 
