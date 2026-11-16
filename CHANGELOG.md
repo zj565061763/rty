@@ -1,11 +1,15 @@
 # Changelog
 
-## Unreleased
+## 1.5.0
 
 ### ⚠️ Breaking Changes
 
 - `rty` 的 `maxCount` 默认值由 `3` 改为 `Int.MAX_VALUE`
 - `rty` 的 `getDelay` 默认延迟由固定 `5` 秒改为阶梯延迟（依次 `3` 秒、`5` 秒，之后固定 `10` 秒）
+
+### Migration
+
+- 如需保持旧版默认行为，显式传入 `rty(maxCount = 3, getDelay = rtyDelay(5_000))`
 
 ### ✨ Improvements
 
