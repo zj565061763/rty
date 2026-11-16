@@ -1,8 +1,10 @@
 package com.sd.lib.rty
 
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
@@ -169,6 +171,75 @@ class RtyTest {
         assertEquals(false, failureCalled)
         assertEquals(true, job.isCancelled)
       }
+
+      var delayCalledOnSkip = false
+      var skipCount = 0
+      launch {
+        val coroutineScope = this
+        rty(
+          maxCount = 3,
+          getDelay = {
+            delayCalledOnSkip = true
+            1_000L
+          },
+        ) {
+          skipCount++
+          coroutineScope.cancel()
+          rtySkip()
+        }
+      }.also { job ->
+        job.join()
+        assertEquals(1, skipCount)
+        assertEquals(false, delayCalledOnSkip)
+        assertEquals(true, job.isCancelled)
+      }
+    }
+  }
+
+  @Test
+  fun `test cancel during positive delay`() {
+    runTest {
+      var failureCount = 0
+      val failureJob = launch {
+        rty(
+          maxCount = 5,
+          getDelay = { 3_000L },
+        ) {
+          failureCount++
+          error("error")
+        }
+      }
+
+      launch {
+        delay(1.seconds)
+        failureJob.cancel()
+      }
+
+      failureJob.join()
+      assertEquals(1, failureCount)
+      assertEquals(true, failureJob.isCancelled)
+      assertEquals(1_000L, currentTime)
+
+      var skipCount = 0
+      val skipJob = launch {
+        rty(
+          maxCount = 5,
+          getDelay = { 3_000L },
+        ) {
+          skipCount++
+          rtySkip()
+        }
+      }
+
+      launch {
+        delay(1.seconds)
+        skipJob.cancel()
+      }
+
+      skipJob.join()
+      assertEquals(1, skipCount)
+      assertEquals(true, skipJob.isCancelled)
+      assertEquals(2_000L, currentTime)
     }
   }
 
@@ -281,6 +352,44 @@ class RtyTest {
         error("error")
       }
       assertEquals("1|fail:1|2|fail:2|3|3|fail:3|4|fail:4|5|fail:5", events.joinToString("|"))
+      assertEquals(38_000L, currentTime)
+    }
+  }
+
+  @Test
+  fun `test skip with maxCount 1`() {
+    runTest {
+      var attempts = 0
+      val okResult = rty(
+        maxCount = 1,
+        getDelay = { rtyCount * 1_000L },
+      ) {
+        attempts++
+        if (attempts <= 3) rtySkip()
+        "ok"
+      }
+      assertEquals("ok", okResult.getOrThrow())
+      assertEquals(4, attempts)
+      assertEquals(3_000L, currentTime)
+
+      var failAttempts = 0
+      var failureCount = 0
+      val failResult = rty(
+        maxCount = 1,
+        getDelay = { rtyCount * 1_000L },
+        onFailure = {
+          failureCount++
+          true
+        },
+      ) {
+        failAttempts++
+        if (failAttempts <= 2) rtySkip()
+        error("final error")
+      }
+      assertEquals("final error", failResult.exceptionOrNull()!!.message)
+      assertEquals(3, failAttempts)
+      assertEquals(1, failureCount)
+      assertEquals(5_000L, currentTime)
     }
   }
 
@@ -513,5 +622,71 @@ class RtyTest {
       assertEquals("error 1|error 2|error 3", events.joinToString("|"))
       assertEquals(3_000L + 5_000L, currentTime)
     }
+  }
+
+  @Test
+  fun `test callback exception`() {
+    var count = 0
+    var delayCalled = false
+    val onFailureException = assertThrows(IllegalStateException::class.java) {
+      runTest {
+        rty(
+          maxCount = 3,
+          getDelay = {
+            delayCalled = true
+            1_000L
+          },
+          onFailure = {
+            error("onFailure boom")
+          },
+        ) {
+          count++
+          throw IllegalArgumentException("block error")
+        }
+      }
+    }
+    assertEquals("onFailure boom", onFailureException.message)
+    assertEquals(1, count)
+    assertEquals(false, delayCalled)
+
+    count = 0
+    val failureDelayException = assertThrows(IllegalStateException::class.java) {
+      runTest {
+        rty(
+          maxCount = 3,
+          getDelay = {
+            error("failure getDelay boom")
+          },
+        ) {
+          count++
+          throw IllegalArgumentException("block error")
+        }
+      }
+    }
+    assertEquals("failure getDelay boom", failureDelayException.message)
+    assertEquals(1, count)
+
+    count = 0
+    var failureCalled = false
+    val skipDelayException = assertThrows(IllegalStateException::class.java) {
+      runTest {
+        rty(
+          maxCount = 3,
+          getDelay = {
+            error("skip getDelay boom")
+          },
+          onFailure = {
+            failureCalled = true
+            true
+          },
+        ) {
+          count++
+          rtySkip()
+        }
+      }
+    }
+    assertEquals("skip getDelay boom", skipDelayException.message)
+    assertEquals(1, count)
+    assertEquals(false, failureCalled)
   }
 }

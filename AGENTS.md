@@ -53,12 +53,14 @@
 | `RtyTest` | `test cancel before block` | 进入 `rty` 前协程已取消时不再执行 `block` |
 | `RtyTest` | `test cancel with zero delay` | `getDelay` 返回 `0` 且期间取消协程时不再进入下一轮执行 |
 | `RtyTest` | `test queued cancel with non-positive delay` | `getDelay` 返回 `0` 或负数时让出执行权，同一调度器排队的取消任务在普通异常与 `rtySkip()` 首轮后即生效 |
-| `RtyTest` | `test cancel during block` | `block` 执行期间取消协程后返回正常值或抛出普通异常时均按取消结束，不返回成功结果也不触发 `onFailure` |
+| `RtyTest` | `test cancel during block` | `block` 执行期间取消协程后返回正常值、抛出普通异常或调用 `rtySkip()` 时均按取消结束，不返回成功结果也不触发 `onFailure` 或 `getDelay` |
+| `RtyTest` | `test cancel during positive delay` | 普通异常或 `rtySkip()` 进入正数延迟挂起期间取消协程时立即中断等待，不再进入下一轮执行 |
 | `RtyTest` | `test cancel during onFailure` | `onFailure` 执行期间取消协程（含返回 `false` 或已达 `maxCount`）时按取消结束，不返回 `Result.failure` |
 | `RtyTest` | `test jvm error` | `Error` 直接向外抛出，不触发 `onFailure` 与重试 |
 | `RtyTest` | `test count` | `rtyCount` 从 `1` 依次递增至 `maxCount` |
 | `RtyTest` | `test default maxCount` | 未指定 `maxCount` 时默认按 `Int.MAX_VALUE` 持续重试直至成功 |
-| `RtyTest` | `test skip` | `rtySkip()` 跳过当次执行，不触发 `onFailure` 且不消耗 `rtyCount` |
+| `RtyTest` | `test skip` | `rtySkip()` 跳过当次执行并按当前 `rtyCount` 延迟，不触发 `onFailure` 且不消耗 `rtyCount` |
+| `RtyTest` | `test skip with maxCount 1` | `maxCount = 1` 时连续 `rtySkip()` 按未递增的 `rtyCount` 延迟并继续执行，直至成功或首次失败结束 |
 | `RtyTest` | `test skip with catch Exception` | `block` 内 `catch (Exception)` 不会误捕 `rtySkip()` |
 | `RtyTest` | `test invalid skip outside block` | `onFailure`、`getDelay` 不实现 `RtyDoingScope`，且当轮 `block` 结束后调用 `rtySkip()` 抛出 `IllegalStateException` |
 | `RtyTest` | `test nested skip` | 嵌套 `rty` 中调用外层 `rtySkip()` 时正常透传到外层作用域 |
@@ -68,6 +70,7 @@
 | `RtyTest` | `test invalid maxCount` | `maxCount <= 0` 时抛出 `IllegalArgumentException` |
 | `RtyTest` | `test onFailure` | 每次失败（含达到 `maxCount` 的最后一次）均触发 `onFailure` |
 | `RtyTest` | `test onFailure false` | `onFailure` 返回 `false` 时提前终止重试且不再延迟 |
+| `RtyTest` | `test callback exception` | `onFailure` 或 `getDelay`（含失败与跳过路径）自身抛出异常时原样向外传播，不触发后续重试 |
 
 ## 发布配置
 
