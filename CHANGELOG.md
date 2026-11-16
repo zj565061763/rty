@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1
+
+### ✨ Improvements
+
+- `rty` 的 `maxCount` 传入 `Int.MAX_VALUE`（含默认值）时表示无限重试
+- `RtyScope.rtyCount` 达到 `Int.MAX_VALUE` 后保持不变
+
 ## 1.5.0
 
 ### ⚠️ Breaking Changes
