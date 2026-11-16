@@ -5,3 +5,7 @@
 ```kotlin
 implementation("io.github.zj565061763.android:rty:$version")
 ```
+
+# About
+
+变更记录请看 [CHANGELOG.md](CHANGELOG.md)
