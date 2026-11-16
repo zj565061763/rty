@@ -30,15 +30,15 @@
 - 对外仅暴露 `rty`、`rtyDelayDefault`、`rtyDelay`、`RtyScope`、`RtyDoingScope`，内部函数与类 `delayOrYield`、`RtyScopeImpl`、`RtyDoingScopeImpl`、`SkipRtyException` 保持 `private`。
 - 修改公开 API 时保持现有函数签名与默认参数的源码及二进制兼容性。
 - 重试与跳过的等待统一通过 `delayOrYield` 处理：正数延迟转为 `Duration`（`delayMillis.milliseconds`）调用 `delay`，`0` 或负数延迟调用 `yield()` 让出执行权。
-- `maxCount` 默认值为 `Int.MAX_VALUE`，通过 `require(maxCount > 0)` 校验，表示含首次执行在内的最大总执行次数，而非额外重试次数。
+- `maxCount` 默认值为 `Int.MAX_VALUE`，通过 `require(maxCount > 0)` 校验，表示含首次执行在内的最大总执行次数（而非额外重试次数），传入 `Int.MAX_VALUE` 表示无限重试。
 - `getDelay` 默认使用 `rtyDelayDefault()`（按 `rtyCount` 依次延迟 `3_000`、`5_000`，之后固定 `10_000` 毫秒）；`rtyDelay(vararg delays: Long)` 先拷贝数组并校验非空且每项 `>= 0`，超出长度后固定取最后一项。
-- `rtyCount` 从 `1` 开始计数，仅在普通异常需要重试且完成延迟后递增。
+- `rtyCount` 从 `1` 开始计数，仅在普通异常需要重试且完成延迟后递增，达到 `Int.MAX_VALUE` 后保持不变以避免溢出。
 - 每轮执行 `block` 时创建独立的 `RtyDoingScopeImpl` 并在 `finally` 中失效，避免向 `onFailure`、`getDelay` 暴露 `RtyDoingScope`，且在当轮执行块外调用 `rtySkip()` 时抛出 `IllegalStateException`。
 - `RtyDoingScope.rtySkip()` 抛出绑定当前作用域 `owner`、直接继承 `Throwable` 且重写 `fillInStackTrace()` 的 `SkipRtyException`，避免采集栈帧与被业务 `catch (Exception)` 误捕。
 - 捕获 `SkipRtyException` 时先校验 `exception.owner === this`，非当前作用域直接重抛给外层 `rty`；当前作用域不触发 `onFailure`、不递增 `rtyCount`，仅延迟后继续下一轮。
 - `block` 抛出 `CancellationException` 或 `Error` 时直接重新抛出，且在每轮循环入口、`block` 返回后与 `onFailure` 返回后均调用 `currentCoroutineContext().ensureActive()` 以响应协程取消。
-- 普通异常先回调 `onFailure(exception)` 再检查 `rtyCount >= maxCount`，因此达到最大次数时的最后一次失败也会触发 `onFailure`。
-- `onFailure` 返回 `false` 或 `rtyCount >= maxCount` 时立即返回 `Result.failure`，不再执行延迟。
+- 普通异常先回调 `onFailure(exception)` 再检查是否达到有限 `maxCount`（`maxCount != Int.MAX_VALUE && rtyCount >= maxCount`），因此达到最大次数时的最后一次失败也会触发 `onFailure`。
+- `onFailure` 返回 `false` 或达到有限 `maxCount` 时立即返回 `Result.failure`，不再执行延迟。
 
 ## 测试与代码规范
 
@@ -58,7 +58,8 @@
 | `RtyTest` | `test cancel during onFailure` | `onFailure` 执行期间取消协程（含返回 `false` 或已达 `maxCount`）时按取消结束，不返回 `Result.failure` |
 | `RtyTest` | `test jvm error` | `Error` 直接向外抛出，不触发 `onFailure` 与重试 |
 | `RtyTest` | `test count` | `rtyCount` 从 `1` 依次递增至 `maxCount` |
-| `RtyTest` | `test default maxCount` | 未指定 `maxCount` 时默认按 `Int.MAX_VALUE` 持续重试直至成功 |
+| `RtyTest` | `test default maxCount` | 未指定 `maxCount` 时默认无限重试直至成功 |
+| `RtyTest` | `test infinite maxCount` | `maxCount = Int.MAX_VALUE` 时超过 `Int.MAX_VALUE` 次仍无限重试且 `rtyCount` 封顶不溢出，有限上限 `Int.MAX_VALUE - 1` 正常终止 |
 | `RtyTest` | `test skip` | `rtySkip()` 跳过当次执行并按当前 `rtyCount` 延迟，不触发 `onFailure` 且不消耗 `rtyCount` |
 | `RtyTest` | `test skip with maxCount 1` | `maxCount = 1` 时连续 `rtySkip()` 按未递增的 `rtyCount` 延迟并继续执行，直至成功或首次失败结束 |
 | `RtyTest` | `test skip with catch Exception` | `block` 内 `catch (Exception)` 不会误捕 `rtySkip()` |

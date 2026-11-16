@@ -9,11 +9,11 @@ import kotlinx.coroutines.yield
 
 /**
  * 执行 [block]，捕获除 [CancellationException] 与 [Error] 外的异常并回调 [onFailure]；
- * [onFailure] 返回 `true` 且未达 [maxCount] 时延迟 [getDelay] 后重试，返回 `false` 或已达 [maxCount] 时返回失败结果。
+ * [onFailure] 返回 `true` 且未达次数上限时延迟 [getDelay] 后重试，否则返回失败结果。
  *
  * `withTimeout` 超时属于 [CancellationException] 不会触发重试，单次超时重试请使用 `withTimeoutOrNull`。
  *
- * @param maxCount 含首次执行在内的最大总执行次数，必须大于 0
+ * @param maxCount 含首次执行在内的最大总执行次数，必须大于 0，传入 [Int.MAX_VALUE] 表示无限重试
  * @param getDelay 重试或跳过后的延迟毫秒数
  * @param onFailure 失败回调，返回 `false` 时停止重试
  * @param block 执行逻辑，可通过 [RtyDoingScope.rtySkip] 跳过本次执行
@@ -45,7 +45,7 @@ suspend fun <T> rty(
       val shouldContinue = onFailure(exception).also { currentCoroutineContext().ensureActive() }
       if (!shouldContinue) return result
 
-      if (rtyCount >= maxCount) {
+      if (maxCount != Int.MAX_VALUE && rtyCount >= maxCount) {
         // 达到最大执行次数
         return result
       } else {
@@ -88,7 +88,7 @@ fun rtyDelay(vararg delays: Long): RtyScope.() -> Long {
 
 /** 重试作用域 */
 interface RtyScope {
-  /** 当前执行次数，从 1 开始计数 */
+  /** 当前执行次数，从 1 开始计数，达到 [Int.MAX_VALUE] 后保持不变 */
   val rtyCount: Int
 }
 
@@ -120,7 +120,9 @@ private class RtyScopeImpl : RtyScope {
   }
 
   fun increaseCount() {
-    rtyCount++
+    if (rtyCount < Int.MAX_VALUE) {
+      rtyCount++
+    }
   }
 }
 

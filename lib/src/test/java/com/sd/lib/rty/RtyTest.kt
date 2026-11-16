@@ -333,6 +333,66 @@ class RtyTest {
   }
 
   @Test
+  fun `test infinite maxCount`() {
+    runTest {
+      var attempts = 0
+      val counts = mutableListOf<Int>()
+      val okResult = rty(
+        onFailure = {
+          if (attempts == 1) {
+            setRtyCountForTest(Int.MAX_VALUE - 1)
+          }
+          true
+        },
+      ) {
+        attempts++
+        counts.add(rtyCount)
+        if (attempts < 4) error("error $attempts")
+        "ok:$rtyCount"
+      }
+      assertEquals("ok:${Int.MAX_VALUE}", okResult.getOrThrow())
+      assertEquals(listOf(1, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE), counts)
+      assertEquals(30_000L, currentTime)
+
+      var stopAttempts = 0
+      val stopResult = rty(
+        maxCount = Int.MAX_VALUE,
+        getDelay = rtyDelay(1_000L, 4_000L),
+        onFailure = {
+          if (stopAttempts == 1) {
+            setRtyCountForTest(Int.MAX_VALUE)
+          }
+          stopAttempts < 3
+        },
+      ) {
+        stopAttempts++
+        error("fail $stopAttempts")
+      }
+      assertEquals("fail 3", stopResult.exceptionOrNull()!!.message)
+      assertEquals(3, stopAttempts)
+      assertEquals(38_000L, currentTime)
+
+      var finiteAttempts = 0
+      val finiteResult = rty(
+        maxCount = Int.MAX_VALUE - 1,
+        getDelay = rtyDelay(1_000L),
+        onFailure = {
+          if (finiteAttempts == 1) {
+            setRtyCountForTest(Int.MAX_VALUE - 2)
+          }
+          true
+        },
+      ) {
+        finiteAttempts++
+        error("finite $finiteAttempts")
+      }
+      assertEquals("finite 2", finiteResult.exceptionOrNull()!!.message)
+      assertEquals(2, finiteAttempts)
+      assertEquals(39_000L, currentTime)
+    }
+  }
+
+  @Test
   fun `test skip`() {
     runTest {
       val events = mutableListOf<String>()
@@ -688,5 +748,12 @@ class RtyTest {
     assertEquals("skip getDelay boom", skipDelayException.message)
     assertEquals(1, count)
     assertEquals(false, failureCalled)
+  }
+}
+
+private fun RtyScope.setRtyCountForTest(value: Int) {
+  javaClass.getDeclaredField("rtyCount").also { field ->
+    field.isAccessible = true
+    field.setInt(this, value)
   }
 }
