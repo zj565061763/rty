@@ -85,6 +85,90 @@ class RtyTest {
   }
 
   @Test
+  fun `test cancel during block`() {
+    runTest {
+      var successReturned = false
+      launch {
+        val coroutineScope = this
+        rty {
+          coroutineScope.cancel()
+          "ok"
+        }
+        successReturned = true
+      }.also { job ->
+        job.join()
+        assertEquals(false, successReturned)
+        assertEquals(true, job.isCancelled)
+      }
+
+      var failureCalled = false
+      var count = 0
+      launch {
+        val coroutineScope = this
+        rty(
+          maxCount = 3,
+          onFailure = {
+            failureCalled = true
+            true
+          },
+        ) {
+          count++
+          coroutineScope.cancel()
+          error("error")
+        }
+      }.also { job ->
+        job.join()
+        assertEquals(1, count)
+        assertEquals(false, failureCalled)
+        assertEquals(true, job.isCancelled)
+      }
+    }
+  }
+
+  @Test
+  fun `test cancel during onFailure`() {
+    runTest {
+      var failureReturnedOnFalse = false
+      launch {
+        val coroutineScope = this
+        rty(
+          maxCount = 3,
+          onFailure = {
+            coroutineScope.cancel()
+            false
+          },
+        ) {
+          error("error")
+        }
+        failureReturnedOnFalse = true
+      }.also { job ->
+        job.join()
+        assertEquals(false, failureReturnedOnFalse)
+        assertEquals(true, job.isCancelled)
+      }
+
+      var failureReturnedOnMaxCount = false
+      launch {
+        val coroutineScope = this
+        rty(
+          maxCount = 1,
+          onFailure = {
+            coroutineScope.cancel()
+            true
+          },
+        ) {
+          error("error")
+        }
+        failureReturnedOnMaxCount = true
+      }.also { job ->
+        job.join()
+        assertEquals(false, failureReturnedOnMaxCount)
+        assertEquals(true, job.isCancelled)
+      }
+    }
+  }
+
+  @Test
   fun `test jvm error`() {
     var count = 0
     var failureCalled = false
@@ -300,7 +384,23 @@ class RtyTest {
     assertThrows(IllegalArgumentException::class.java) {
       rtyDelay()
     }
+    assertThrows(IllegalArgumentException::class.java) {
+      rtyDelay(-1L)
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      rtyDelay(1_000L, -1L)
+    }
     runTest {
+      val zeroDelayResult = rty(
+        maxCount = 2,
+        getDelay = rtyDelay(0L),
+      ) {
+        if (rtyCount == 1) error("error")
+        "ok"
+      }
+      assertEquals("ok", zeroDelayResult.getOrThrow())
+      assertEquals(0L, currentTime)
+
       val raw = longArrayOf(1_000L, 2_000L, 4_000L)
       val getDelay = rtyDelay(*raw)
       raw[0] = 99_000L

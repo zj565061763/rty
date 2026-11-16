@@ -10,6 +10,8 @@ import kotlinx.coroutines.ensureActive
  * 执行 [block]，捕获除 [CancellationException] 与 [Error] 外的异常并回调 [onFailure]；
  * [onFailure] 返回 `true` 且未达 [maxCount] 时延迟 [getDelay] 后重试，返回 `false` 或已达 [maxCount] 时返回失败结果。
  *
+ * `withTimeout` 超时属于 [CancellationException] 不会触发重试，单次超时重试请使用 `withTimeoutOrNull`。
+ *
  * @param maxCount 含首次执行在内的最大总执行次数，必须大于 0
  * @param getDelay 重试或跳过后的延迟毫秒数
  * @param onFailure 失败回调，返回 `false` 时停止重试
@@ -22,7 +24,7 @@ suspend fun <T> rty(
   onFailure: RtyScope.(Throwable) -> Boolean = { true },
   block: suspend RtyDoingScope.() -> T,
 ): Result<T> {
-  require(maxCount > 0)
+  require(maxCount > 0) { "maxCount ($maxCount) must be > 0." }
   with(RtyScopeImpl()) {
     while (true) {
       currentCoroutineContext().ensureActive()
@@ -69,11 +71,14 @@ fun rtyDelayDefault(): RtyScope.() -> Long {
 /**
  * 按 [RtyScope.rtyCount] 依次取 [delays] 中的延迟毫秒数，超出长度后固定使用最后一项
  *
- * @param delays 各次延迟毫秒数，不能为空
+ * @param delays 各次延迟毫秒数，不能为空且每项不能小于 0
  */
 fun rtyDelay(vararg delays: Long): RtyScope.() -> Long {
-  require(delays.isNotEmpty())
   val copy = delays.copyOf()
+  require(copy.isNotEmpty()) { "delays must not be empty." }
+  for (delay in copy) {
+    require(delay >= 0) { "delay ($delay) must be >= 0." }
+  }
   return {
     val index = if (rtyCount <= 1) 0 else minOf(rtyCount - 1, copy.lastIndex)
     copy[index]

@@ -30,7 +30,7 @@
 - 对外仅暴露 `rty`、`rtyDelayDefault`、`rtyDelay`、`RtyScope`、`RtyDoingScope`，内部类 `RtyScopeImpl`、`RtyDoingScopeImpl` 与 `SkipRtyException` 保持 `private`。
 - 修改公开 API 时保持现有函数签名与默认参数的源码及二进制兼容性，内部调用 `delay` 时通过 `getDelay().milliseconds` 转为 `Duration`。
 - `maxCount` 默认值为 `Int.MAX_VALUE`，通过 `require(maxCount > 0)` 校验，表示含首次执行在内的最大总执行次数，而非额外重试次数。
-- `getDelay` 默认使用 `rtyDelayDefault()`（按 `rtyCount` 依次延迟 `3_000`、`5_000`，之后固定 `10_000` 毫秒）；`rtyDelay(vararg delays: Long)` 通过 `require(delays.isNotEmpty())` 校验并拷贝数组，超出长度后固定取最后一项。
+- `getDelay` 默认使用 `rtyDelayDefault()`（按 `rtyCount` 依次延迟 `3_000`、`5_000`，之后固定 `10_000` 毫秒）；`rtyDelay(vararg delays: Long)` 先拷贝数组并校验非空且每项 `>= 0`，超出长度后固定取最后一项。
 - `rtyCount` 从 `1` 开始计数，仅在普通异常需要重试且完成延迟后递增。
 - 每轮执行 `block` 时创建独立的 `RtyDoingScopeImpl` 并在 `finally` 中失效，避免向 `onFailure`、`getDelay` 暴露 `RtyDoingScope`，且在当轮执行块外调用 `rtySkip()` 时抛出 `IllegalStateException`。
 - `RtyDoingScope.rtySkip()` 抛出绑定当前作用域 `owner`、直接继承 `Throwable` 且重写 `fillInStackTrace()` 的 `SkipRtyException`，避免采集栈帧与被业务 `catch (Exception)` 误捕。
@@ -51,6 +51,8 @@
 | `RtyTest` | `test cancel` | `CancellationException` 正常向外传播并取消协程 |
 | `RtyTest` | `test cancel before block` | 进入 `rty` 前协程已取消时不再执行 `block` |
 | `RtyTest` | `test cancel with zero delay` | `getDelay` 返回 `0` 且期间取消协程时不再进入下一轮执行 |
+| `RtyTest` | `test cancel during block` | `block` 执行期间取消协程后返回正常值或抛出普通异常时均按取消结束，不返回成功结果也不触发 `onFailure` |
+| `RtyTest` | `test cancel during onFailure` | `onFailure` 执行期间取消协程（含返回 `false` 或已达 `maxCount`）时按取消结束，不返回 `Result.failure` |
 | `RtyTest` | `test jvm error` | `Error` 直接向外抛出，不触发 `onFailure` 与重试 |
 | `RtyTest` | `test count` | `rtyCount` 从 `1` 依次递增至 `maxCount` |
 | `RtyTest` | `test default maxCount` | 未指定 `maxCount` 时默认按 `Int.MAX_VALUE` 持续重试直至成功 |
@@ -60,11 +62,11 @@
 | `RtyTest` | `test nested skip` | 嵌套 `rty` 中调用外层 `rtySkip()` 时正常透传到外层作用域 |
 | `RtyTest` | `test delay` | 重试延迟按 `getDelay()` 推进且达到上限后不再额外延迟 |
 | `RtyTest` | `test default delay` | 默认 `getDelay` 按 `3s -> 5s -> 10s` 阶梯延迟推进 |
-| `RtyTest` | `test rtyDelay` | `rtyDelay` 空参校验、数组防御性拷贝与阶梯延迟行为 |
+| `RtyTest` | `test rtyDelay` | `rtyDelay` 空参及负数校验、数组防御性拷贝与阶梯延迟行为 |
 | `RtyTest` | `test invalid maxCount` | `maxCount <= 0` 时抛出 `IllegalArgumentException` |
 | `RtyTest` | `test onFailure` | 每次失败（含达到 `maxCount` 的最后一次）均触发 `onFailure` |
 | `RtyTest` | `test onFailure false` | `onFailure` 返回 `false` 时提前终止重试且不再延迟 |
 
 ## 发布配置
 
-- 发布元数据定义在 `lib/gradle.properties`（`GROUP`、`POM_ARTIFACT_ID`、`VERSION_NAME`），通过 `com.vanniktech.maven.publish` 发布单变体 `release` 及源码、Javadoc JAR。
+- 发布元数据定义在 `lib/gradle.properties`（`GROUP`、`POM_ARTIFACT_ID`、`VERSION_NAME`），`kotlinOptions.moduleName` 设为 `com.sd.lib.rty` 以避免 `.kotlin_module` 重名冲突，通过 `com.vanniktech.maven.publish` 发布单变体 `release` 及源码、Javadoc JAR。
