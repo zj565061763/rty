@@ -5,12 +5,15 @@
 ### ✨ Improvements
 
 - 完善公开 API 的 KDoc 注释，补充参数说明、`maxCount` 约束与 `rtySkip()` 行为说明
+- 校验 `rtySkip()` 调用时机，禁止在当轮执行块外调用
 - 修正 Maven POM 中的开源协议为 MIT，与仓库 `LICENSE` 保持一致
 
 ### 🐛 Bug Fixes
 
 - 嵌套调用 `rty` 时，内层调用外层的 `rtySkip()` 会被内层拦截并变成内层重试
 - `block` 内 `catch (Exception)` 会误捕获 `rtySkip()`，导致跳过失效
+- `block` 抛出 JVM `Error` 时会被捕获并重试，现改为直接向外抛出
+- 协程已取消或非正数延迟期间被取消时仍会执行一次 `block`
 
 ## 1.1.1
 

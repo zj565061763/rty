@@ -2,12 +2,12 @@ package com.sd.lib.rty
 
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
-import org.junit.Assert.fail
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -40,6 +40,70 @@ class RtyTest {
         assertEquals(true, job.isCancelled)
       }
     }
+  }
+
+  @Test
+  fun `test cancel before block`() {
+    runTest {
+      var executed = false
+      launch {
+        cancel()
+        rty {
+          executed = true
+          "ok"
+        }
+      }.also { job ->
+        job.join()
+        assertEquals(false, executed)
+        assertEquals(true, job.isCancelled)
+      }
+    }
+  }
+
+  @Test
+  fun `test cancel with zero delay`() {
+    runTest {
+      var count = 0
+      launch {
+        val coroutineScope = this
+        rty(
+          maxCount = 3,
+          getDelay = {
+            coroutineScope.cancel()
+            0
+          },
+        ) {
+          count++
+          error("error")
+        }
+      }.also { job ->
+        job.join()
+        assertEquals(1, count)
+        assertEquals(true, job.isCancelled)
+      }
+    }
+  }
+
+  @Test
+  fun `test jvm error`() {
+    var count = 0
+    var failureCalled = false
+    assertThrows(AssertionError::class.java) {
+      runTest {
+        rty(
+          maxCount = 3,
+          onFailure = {
+            failureCalled = true
+            true
+          },
+        ) {
+          count++
+          throw AssertionError("fatal")
+        }
+      }
+    }
+    assertEquals(1, count)
+    assertEquals(false, failureCalled)
   }
 
   @Test
@@ -82,7 +146,14 @@ class RtyTest {
     runTest {
       val events = mutableListOf<String>()
       var skipped = false
-      val result = rty(maxCount = 2) {
+      var caught = false
+      val result = rty(
+        maxCount = 2,
+        onFailure = {
+          events.add("fail:$rtyCount")
+          true
+        },
+      ) {
         events.add(rtyCount.toString())
         try {
           if (!skipped) {
@@ -91,12 +162,51 @@ class RtyTest {
           }
           "ok"
         } catch (_: Exception) {
-          fail("rtySkip should not be caught by catch(Exception)")
+          caught = true
           ""
         }
       }
+      assertEquals(false, caught)
       assertEquals("ok", result.getOrThrow())
       assertEquals("1|1", events.joinToString("|"))
+    }
+  }
+
+  @Test
+  fun `test invalid skip outside block`() {
+    runTest {
+      var leakedScope: RtyDoingScope? = null
+      var onFailureIsDoingScope = true
+      var getDelayIsDoingScope = true
+      val result = rty(
+        maxCount = 2,
+        getDelay = {
+          getDelayIsDoingScope = this is RtyDoingScope
+          assertThrows(IllegalStateException::class.java) {
+            leakedScope!!.rtySkip()
+          }
+          100
+        },
+        onFailure = {
+          onFailureIsDoingScope = this is RtyDoingScope
+          assertThrows(IllegalStateException::class.java) {
+            leakedScope!!.rtySkip()
+          }
+          true
+        },
+      ) {
+        if (rtyCount == 1) {
+          leakedScope = this
+          error("error")
+        }
+        "ok"
+      }
+      assertEquals("ok", result.getOrThrow())
+      assertEquals(false, onFailureIsDoingScope)
+      assertEquals(false, getDelayIsDoingScope)
+      assertThrows(IllegalStateException::class.java) {
+        leakedScope!!.rtySkip()
+      }
     }
   }
 

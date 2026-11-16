@@ -7,7 +7,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 
 /**
- * 执行 [block]，捕获除 [CancellationException] 外的异常并回调 [onFailure]；
+ * 执行 [block]，捕获除 [CancellationException] 与 [Error] 外的异常并回调 [onFailure]；
  * [onFailure] 返回 `true` 且未达 [maxCount] 时延迟 [getDelay] 后重试，返回 `false` 或已达 [maxCount] 时返回失败结果。
  *
  * @param maxCount 含首次执行在内的最大总执行次数，必须大于 0
@@ -25,8 +25,9 @@ suspend fun <T> rty(
   require(maxCount > 0)
   with(RtyScopeImpl()) {
     while (true) {
-      val result = runCatching { block() }
-        .onFailure { e -> if (e is CancellationException) throw e }
+      currentCoroutineContext().ensureActive()
+      val result = runBlock(block)
+        .onFailure { e -> if (e is CancellationException || e is Error) throw e }
 
       currentCoroutineContext().ensureActive()
       if (result.isSuccess) return result
@@ -62,20 +63,41 @@ interface RtyScope {
 
 /** 执行块作用域 */
 interface RtyDoingScope : RtyScope {
-  /** 跳过本次执行，不触发失败回调且不计入执行次数，延迟后继续下一轮执行 */
+  /** 仅限当轮执行块内调用以跳过本次执行，不触发失败回调且不计入执行次数，延迟后继续下一轮执行 */
   fun rtySkip(): Nothing
 }
 
-private class RtyScopeImpl : RtyDoingScope {
+private class RtyScopeImpl : RtyScope {
   override var rtyCount: Int = 1
     private set
 
-  override fun rtySkip(): Nothing {
-    throw SkipRtyException(this)
+  suspend fun <T> runBlock(block: suspend RtyDoingScope.() -> T): Result<T> {
+    val doingScope = RtyDoingScopeImpl(this)
+    return try {
+      runCatching { doingScope.block() }
+    } finally {
+      doingScope.invalidate()
+    }
   }
 
   fun increaseCount() {
     rtyCount++
+  }
+}
+
+private class RtyDoingScopeImpl(
+  private val scope: RtyScopeImpl,
+) : RtyDoingScope, RtyScope by scope {
+  @Volatile
+  private var _active: Boolean = true
+
+  override fun rtySkip(): Nothing {
+    check(_active) { "rtySkip() must be called inside an active rty block." }
+    throw SkipRtyException(scope)
+  }
+
+  fun invalidate() {
+    _active = false
   }
 }
 

@@ -27,13 +27,14 @@
 ## 核心实现与约束
 
 - `:lib` 对 `kotlinx-coroutines-android` 使用 `compileOnly` 依赖以避免传递协程版本，修改 `:lib` 时不得改为 `implementation` 或 `api`，也不引入额外运行时依赖。
-- 对外仅暴露 `rty`、`RtyScope`、`RtyDoingScope`，内部类 `RtyScopeImpl` 与 `SkipRtyException` 保持 `private`。
+- 对外仅暴露 `rty`、`RtyScope`、`RtyDoingScope`，内部类 `RtyScopeImpl`、`RtyDoingScopeImpl` 与 `SkipRtyException` 保持 `private`。
 - 修改公开 API 时保持现有函数签名与默认参数的源码及二进制兼容性，内部调用 `delay` 时通过 `getDelay().milliseconds` 转为 `Duration`。
 - `maxCount` 通过 `require(maxCount > 0)` 校验，表示含首次执行在内的最大总执行次数，而非额外重试次数。
 - `rtyCount` 从 `1` 开始计数，仅在普通异常需要重试且完成延迟后递增。
+- 每轮执行 `block` 时创建独立的 `RtyDoingScopeImpl` 并在 `finally` 中失效，避免向 `onFailure`、`getDelay` 暴露 `RtyDoingScope`，且在当轮执行块外调用 `rtySkip()` 时抛出 `IllegalStateException`。
 - `RtyDoingScope.rtySkip()` 抛出绑定当前作用域 `owner`、直接继承 `Throwable` 且重写 `fillInStackTrace()` 的 `SkipRtyException`，避免采集栈帧与被业务 `catch (Exception)` 误捕。
 - 捕获 `SkipRtyException` 时先校验 `exception.owner === this`，非当前作用域直接重抛给外层 `rty`；当前作用域不触发 `onFailure`、不递增 `rtyCount`，仅延迟后继续下一轮。
-- `block` 抛出 `CancellationException` 时直接重新抛出，且在 `block` 与 `onFailure` 返回后均调用 `currentCoroutineContext().ensureActive()` 以响应协程取消。
+- `block` 抛出 `CancellationException` 或 `Error` 时直接重新抛出，且在每轮循环入口、`block` 返回后与 `onFailure` 返回后均调用 `currentCoroutineContext().ensureActive()` 以响应协程取消。
 - 普通异常先回调 `onFailure(exception)` 再检查 `rtyCount >= maxCount`，因此达到最大次数时的最后一次失败也会触发 `onFailure`。
 - `onFailure` 返回 `false` 或 `rtyCount >= maxCount` 时立即返回 `Result.failure`，不再执行延迟。
 
@@ -47,9 +48,13 @@
 | `RtyTest` | `test success` | 首次执行成功时返回 `Result.success` |
 | `RtyTest` | `test error` | 连续失败达到 `maxCount` 时返回最后一次异常 |
 | `RtyTest` | `test cancel` | `CancellationException` 正常向外传播并取消协程 |
+| `RtyTest` | `test cancel before block` | 进入 `rty` 前协程已取消时不再执行 `block` |
+| `RtyTest` | `test cancel with zero delay` | `getDelay` 返回 `0` 且期间取消协程时不再进入下一轮执行 |
+| `RtyTest` | `test jvm error` | `Error` 直接向外抛出，不触发 `onFailure` 与重试 |
 | `RtyTest` | `test count` | `rtyCount` 从 `1` 依次递增至 `maxCount` |
 | `RtyTest` | `test skip` | `rtySkip()` 跳过当次执行，不触发 `onFailure` 且不消耗 `rtyCount` |
 | `RtyTest` | `test skip with catch Exception` | `block` 内 `catch (Exception)` 不会误捕 `rtySkip()` |
+| `RtyTest` | `test invalid skip outside block` | `onFailure`、`getDelay` 不实现 `RtyDoingScope`，且当轮 `block` 结束后调用 `rtySkip()` 抛出 `IllegalStateException` |
 | `RtyTest` | `test nested skip` | 嵌套 `rty` 中调用外层 `rtySkip()` 时正常透传到外层作用域 |
 | `RtyTest` | `test delay` | 重试延迟按 `getDelay()` 推进且达到上限后不再额外延迟 |
 | `RtyTest` | `test invalid maxCount` | `maxCount <= 0` 时抛出 `IllegalArgumentException` |
