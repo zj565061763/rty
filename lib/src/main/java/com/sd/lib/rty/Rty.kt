@@ -1,24 +1,25 @@
 package com.sd.lib.rty
 
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 
 /**
- * 执行[block]，[block]发生异常时会被捕获并通知[onFailure]，[CancellationException]异常除外。
- * 如果[onFailure]返回false则返回失败结果；
- * 如果[onFailure]返回true则继续执行后面的逻辑，如果未达到最大执行次数[maxCount]，延迟[getDelay]之后继续执行[block]；
- * 如果达到最大执行次数[maxCount]，则返回失败结果。
+ * 执行 [block]，捕获除 [CancellationException] 外的异常并回调 [onFailure]；
+ * [onFailure] 返回 `true` 且未达 [maxCount] 时延迟 [getDelay] 后重试，返回 `false` 或已达 [maxCount] 时返回失败结果。
+ *
+ * @param maxCount 含首次执行在内的最大总执行次数，必须大于 0
+ * @param getDelay 重试或跳过后的延迟毫秒数
+ * @param onFailure 失败回调，返回 `false` 时停止重试
+ * @param block 执行逻辑，可通过 [RtyDoingScope.rtySkip] 跳过本次执行
+ * @return 执行成功或最终失败的 [Result]
  */
 suspend fun <T> rty(
-  /** 最大执行次数 */
   maxCount: Int = 3,
-  /** 获取延迟毫秒 */
   getDelay: RtyScope.() -> Long = { 5_000 },
-  /** 失败回调，返回false停止执行 */
   onFailure: RtyScope.(Throwable) -> Boolean = { true },
-  /** 执行回调 */
   block: suspend RtyDoingScope.() -> T,
 ): Result<T> {
   require(maxCount > 0)
@@ -32,7 +33,8 @@ suspend fun <T> rty(
 
       val exception = checkNotNull(result.exceptionOrNull())
       if (exception is SkipRtyException) {
-        delay(getDelay())
+        if (exception.owner !== this) throw exception
+        delay(getDelay().milliseconds)
         continue
       }
 
@@ -44,7 +46,7 @@ suspend fun <T> rty(
         return result
       } else {
         // 延迟后继续执行
-        delay(getDelay())
+        delay(getDelay().milliseconds)
         increaseCount()
         continue
       }
@@ -52,21 +54,33 @@ suspend fun <T> rty(
   }
 }
 
+/** 重试作用域 */
 interface RtyScope {
-  /** 当前执行次数 */
+  /** 当前执行次数，从 1 开始计数 */
   val rtyCount: Int
 }
 
+/** 执行块作用域 */
 interface RtyDoingScope : RtyScope {
-  /** 跳过本次执行，本次不计数 */
+  /** 跳过本次执行，不触发失败回调且不计入执行次数，延迟后继续下一轮执行 */
   fun rtySkip(): Nothing
 }
 
 private class RtyScopeImpl : RtyDoingScope {
-  private var _count = 1
-  override val rtyCount: Int get() = _count
-  override fun rtySkip(): Nothing = throw SkipRtyException()
-  fun increaseCount() = _count++
+  override var rtyCount: Int = 1
+    private set
+
+  override fun rtySkip(): Nothing {
+    throw SkipRtyException(this)
+  }
+
+  fun increaseCount() {
+    rtyCount++
+  }
 }
 
-private class SkipRtyException : Exception()
+private class SkipRtyException(val owner: RtyScope) : Throwable() {
+  override fun fillInStackTrace(): Throwable {
+    return this
+  }
+}

@@ -25,6 +25,8 @@ android {
 
 dependencies {
   compileOnly(libs.kotlinx.coroutines)
+  testImplementation(libs.junit)
+  testImplementation(libs.kotlinx.coroutines.test)
 }
 
 mavenPublishing {
