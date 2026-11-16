@@ -119,6 +119,18 @@ class RtyTest {
   }
 
   @Test
+  fun `test default maxCount`() {
+    runTest {
+      val result = rty {
+        if (rtyCount < 10) error("error $rtyCount")
+        "ok:$rtyCount"
+      }
+      assertEquals("ok:10", result.getOrThrow())
+      assertEquals(9 * 5_000L, currentTime)
+    }
+  }
+
+  @Test
   fun `test skip`() {
     runTest {
       val events = mutableListOf<String>()

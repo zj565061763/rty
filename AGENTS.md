@@ -29,7 +29,7 @@
 - `:lib` 对 `kotlinx-coroutines-android` 使用 `compileOnly` 依赖以避免传递协程版本，修改 `:lib` 时不得改为 `implementation` 或 `api`，也不引入额外运行时依赖。
 - 对外仅暴露 `rty`、`RtyScope`、`RtyDoingScope`，内部类 `RtyScopeImpl`、`RtyDoingScopeImpl` 与 `SkipRtyException` 保持 `private`。
 - 修改公开 API 时保持现有函数签名与默认参数的源码及二进制兼容性，内部调用 `delay` 时通过 `getDelay().milliseconds` 转为 `Duration`。
-- `maxCount` 通过 `require(maxCount > 0)` 校验，表示含首次执行在内的最大总执行次数，而非额外重试次数。
+- `maxCount` 默认值为 `Int.MAX_VALUE`，通过 `require(maxCount > 0)` 校验，表示含首次执行在内的最大总执行次数，而非额外重试次数。
 - `rtyCount` 从 `1` 开始计数，仅在普通异常需要重试且完成延迟后递增。
 - 每轮执行 `block` 时创建独立的 `RtyDoingScopeImpl` 并在 `finally` 中失效，避免向 `onFailure`、`getDelay` 暴露 `RtyDoingScope`，且在当轮执行块外调用 `rtySkip()` 时抛出 `IllegalStateException`。
 - `RtyDoingScope.rtySkip()` 抛出绑定当前作用域 `owner`、直接继承 `Throwable` 且重写 `fillInStackTrace()` 的 `SkipRtyException`，避免采集栈帧与被业务 `catch (Exception)` 误捕。
@@ -52,6 +52,7 @@
 | `RtyTest` | `test cancel with zero delay` | `getDelay` 返回 `0` 且期间取消协程时不再进入下一轮执行 |
 | `RtyTest` | `test jvm error` | `Error` 直接向外抛出，不触发 `onFailure` 与重试 |
 | `RtyTest` | `test count` | `rtyCount` 从 `1` 依次递增至 `maxCount` |
+| `RtyTest` | `test default maxCount` | 未指定 `maxCount` 时默认按 `Int.MAX_VALUE` 持续重试直至成功 |
 | `RtyTest` | `test skip` | `rtySkip()` 跳过当次执行，不触发 `onFailure` 且不消耗 `rtyCount` |
 | `RtyTest` | `test skip with catch Exception` | `block` 内 `catch (Exception)` 不会误捕 `rtySkip()` |
 | `RtyTest` | `test invalid skip outside block` | `onFailure`、`getDelay` 不实现 `RtyDoingScope`，且当轮 `block` 结束后调用 `rtySkip()` 抛出 `IllegalStateException` |

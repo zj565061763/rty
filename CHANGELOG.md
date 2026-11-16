@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### ⚠️ Breaking Changes
+
+- `rty` 的 `maxCount` 默认值由 `3` 改为 `Int.MAX_VALUE`
+
 ### ✨ Improvements
 
 - 完善公开 API 的 KDoc 注释，补充参数说明、`maxCount` 约束与 `rtySkip()` 行为说明

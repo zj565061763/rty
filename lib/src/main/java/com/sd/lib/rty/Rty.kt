@@ -17,7 +17,7 @@ import kotlinx.coroutines.ensureActive
  * @return 执行成功或最终失败的 [Result]
  */
 suspend fun <T> rty(
-  maxCount: Int = 3,
+  maxCount: Int = Int.MAX_VALUE,
   getDelay: RtyScope.() -> Long = { 5_000 },
   onFailure: RtyScope.(Throwable) -> Boolean = { true },
   block: suspend RtyDoingScope.() -> T,
