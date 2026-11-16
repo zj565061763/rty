@@ -85,6 +85,53 @@ class RtyTest {
   }
 
   @Test
+  fun `test queued cancel with non-positive delay`() {
+    runTest {
+      for (delayMillis in listOf(0L, -1L)) {
+        var failureCount = 0
+        val failureJob = launch {
+          rty(
+            maxCount = 5,
+            getDelay = { delayMillis },
+          ) {
+            failureCount++
+            error("error")
+          }
+        }
+
+        launch {
+          failureJob.cancel()
+        }
+
+        failureJob.join()
+        assertEquals(1, failureCount)
+        assertEquals(true, failureJob.isCancelled)
+
+        var skipCount = 0
+        val skipJob = launch {
+          rty(
+            maxCount = 5,
+            getDelay = { delayMillis },
+          ) {
+            skipCount++
+            if (skipCount < 5) rtySkip()
+            "ok"
+          }
+        }
+
+        launch {
+          skipJob.cancel()
+        }
+
+        skipJob.join()
+        assertEquals(1, skipCount)
+        assertEquals(true, skipJob.isCancelled)
+      }
+      assertEquals(0L, currentTime)
+    }
+  }
+
+  @Test
   fun `test cancel during block`() {
     runTest {
       var successReturned = false

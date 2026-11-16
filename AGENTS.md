@@ -27,8 +27,9 @@
 ## 核心实现与约束
 
 - `:lib` 对 `kotlinx-coroutines-android` 使用 `compileOnly` 依赖以避免传递协程版本，修改 `:lib` 时不得改为 `implementation` 或 `api`，也不引入额外运行时依赖。
-- 对外仅暴露 `rty`、`rtyDelayDefault`、`rtyDelay`、`RtyScope`、`RtyDoingScope`，内部类 `RtyScopeImpl`、`RtyDoingScopeImpl` 与 `SkipRtyException` 保持 `private`。
-- 修改公开 API 时保持现有函数签名与默认参数的源码及二进制兼容性，内部调用 `delay` 时通过 `getDelay().milliseconds` 转为 `Duration`。
+- 对外仅暴露 `rty`、`rtyDelayDefault`、`rtyDelay`、`RtyScope`、`RtyDoingScope`，内部函数与类 `delayOrYield`、`RtyScopeImpl`、`RtyDoingScopeImpl`、`SkipRtyException` 保持 `private`。
+- 修改公开 API 时保持现有函数签名与默认参数的源码及二进制兼容性。
+- 重试与跳过的等待统一通过 `delayOrYield` 处理：正数延迟转为 `Duration`（`delayMillis.milliseconds`）调用 `delay`，`0` 或负数延迟调用 `yield()` 让出执行权。
 - `maxCount` 默认值为 `Int.MAX_VALUE`，通过 `require(maxCount > 0)` 校验，表示含首次执行在内的最大总执行次数，而非额外重试次数。
 - `getDelay` 默认使用 `rtyDelayDefault()`（按 `rtyCount` 依次延迟 `3_000`、`5_000`，之后固定 `10_000` 毫秒）；`rtyDelay(vararg delays: Long)` 先拷贝数组并校验非空且每项 `>= 0`，超出长度后固定取最后一项。
 - `rtyCount` 从 `1` 开始计数，仅在普通异常需要重试且完成延迟后递增。
@@ -51,6 +52,7 @@
 | `RtyTest` | `test cancel` | `CancellationException` 正常向外传播并取消协程 |
 | `RtyTest` | `test cancel before block` | 进入 `rty` 前协程已取消时不再执行 `block` |
 | `RtyTest` | `test cancel with zero delay` | `getDelay` 返回 `0` 且期间取消协程时不再进入下一轮执行 |
+| `RtyTest` | `test queued cancel with non-positive delay` | `getDelay` 返回 `0` 或负数时让出执行权，同一调度器排队的取消任务在普通异常与 `rtySkip()` 首轮后即生效 |
 | `RtyTest` | `test cancel during block` | `block` 执行期间取消协程后返回正常值或抛出普通异常时均按取消结束，不返回成功结果也不触发 `onFailure` |
 | `RtyTest` | `test cancel during onFailure` | `onFailure` 执行期间取消协程（含返回 `false` 或已达 `maxCount`）时按取消结束，不返回 `Result.failure` |
 | `RtyTest` | `test jvm error` | `Error` 直接向外抛出，不触发 `onFailure` 与重试 |

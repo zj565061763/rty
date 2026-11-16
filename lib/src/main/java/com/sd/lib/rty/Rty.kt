@@ -5,6 +5,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.yield
 
 /**
  * 执行 [block]，捕获除 [CancellationException] 与 [Error] 外的异常并回调 [onFailure]；
@@ -37,7 +38,7 @@ suspend fun <T> rty(
       val exception = checkNotNull(result.exceptionOrNull())
       if (exception is SkipRtyException) {
         if (exception.owner !== this) throw exception
-        delay(getDelay().milliseconds)
+        delayOrYield(getDelay())
         continue
       }
 
@@ -49,7 +50,7 @@ suspend fun <T> rty(
         return result
       } else {
         // 延迟后继续执行
-        delay(getDelay().milliseconds)
+        delayOrYield(getDelay())
         increaseCount()
         continue
       }
@@ -95,6 +96,14 @@ interface RtyScope {
 interface RtyDoingScope : RtyScope {
   /** 仅限当轮执行块内调用以跳过本次执行，不触发失败回调且不计入执行次数，延迟后继续下一轮执行 */
   fun rtySkip(): Nothing
+}
+
+private suspend fun delayOrYield(delayMillis: Long) {
+  if (delayMillis > 0) {
+    delay(delayMillis.milliseconds)
+  } else {
+    yield()
+  }
 }
 
 private class RtyScopeImpl : RtyScope {
