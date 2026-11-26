@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2
+
+### ✨ Improvements
+
+- 支持通过 JitPack 引入，依赖坐标为 `com.github.zj565061763:rty`，版本号填写 Git 标签
+
 ## 1.5.1
 
 ### ✨ Improvements
